@@ -1,0 +1,245 @@
+Welcome to the fetch-test-sukumar wiki!
+  
+# **First**:
+
+Review Existing Unstructured Data and Diagram a New Structured Relational Data Model
+
+Answer:
+                  
+
+ users  (Dimension Table 1)         
+-------------------------
+| user_id (PK)          |
+| created_date          |
+| state                 |
+| last_login            |
+| role                  |
+| active                |
+-----------------------
+           ^
+           |
+           | (FK: user_id)
+           |
+           |
+                    
+
+                  receipts(Fact Table)                        
+-----------------------------------------------------                                                   
+| receipt_id(PK)                                       |
+| user_id(FK)                                          |
+| bonus_points_earned                                 |
+| bonus_points_reason                                 |
+| create_date                                         |
+| date_scanned                                        |
+| finished_date                                       |
+| modify_date                                         |
+| points_awarded_date                                 |
+| points_earned                                       |
+| purchase_date                                       |
+| purchased_item_count                                |
+| rewards_receipt_status                              |
+| total_spent                                         |    
+| rewards_receipt_items.barcode (FK to brands.barcode)|
+|  rewards_receipt_items.description                   |
+|  rewards_receipt_items.finalprice                    |
+|  rewards_receipt_items.itemprice                     |
+|  rewards_receipt_items .quantitypurchased            |
+|  rewards_receipt_items .userflaggedbarcode           |
+|  rewards_receipt_items .userflaggeddescription       |
+
+-----------------------------------------------------
+           |
+           | (rewards_receipt_items → barcode FK)
+           V
+
+                 
+
+       (brands) - Dimension Table 2      
+-----------------------
+| brand_id(PK)          |
+| barcode               |
+| brand_code            |
+| name                  |
+| category              |
+| category_code         |
+| top_brand             |
+-----------------------
+
+Explanation:
+
+->receipts is the fact table with all receipt data, including a nested array rewards_receipt_items.
+
+->users is a dimension table connected to receipts through user_id.
+
+->brands is another dimension table connected through rewards_receipt_items.barcode in the nested items.
+
+-> receipts has transaction data like dates, points earned, spenttotal, status, and items purchased.
+
+->rewards_receipt_items has item-level data: barcode, description, price, quantity.
+
+->Foreign Keys: receipts.user_id → users.user_id and rewards_receipt_items.barcode → brands.barcode.
+
+
+**Second:**
+
+ Write queries that directly answer predetermined questions from a business stakeholder
+
+Note: I tested query uploading sample data in s3(AWS) and queried on Athena(Using presto engine). Verified all results
+
+**Question1: **
+
+What are the top 5 brands by receipts scanned for most recent month?
+
+
+-----------------------------
+WITH lat_month AS (
+  SELECT date_format( FROM_UNIXTIME(CAST(datescanned."$date" AS BIGINT) / 1000),'%Y-%m-01'
+   ) AS first_day_of_latest_month FROM receipts )
+SELECT item.barcode, COUNT(DISTINCT r._id."$oid") AS receipts_scanned FROM receipts r
+CROSS JOIN UNNEST(r.rewardsreceiptitemlist) AS t(item)
+CROSS JOIN lat_month lm
+WHERE date_format( FROM_UNIXTIME(CAST(r.datescanned."$date" AS BIGINT) / 1000),'%Y-%m-01') = lm.first_day_of_latest_month
+GROUP BY item.barcode ORDER BY receipts_scanned DESC
+LIMIT 5;
+-----------------------------
+
+Explanation:
+This report detects the top 5 highest-scanned product barcodes of the past month. It then calculates the first day of the latest month based on receipt scan dates. Then, it flattens the list of reward items on each receipt (rewardsreceiptitemlist) and counts how many distinct receipts a specific barcode is present in during the month. Finally, it orders the output in descending order by the most number of receipts and returns top 5.
+
+Output:
+
+#	barcode	       receipts_scanned
+1	4011	            174
+2	1568	            158
+3	B076FJ92M4	     40
+4	B07BRRLSVC	     40
+5	1234	              32
+
+
+**Question2:**
+
+How does the ranking of the top 5 brands by receipts scanned for the recent month compare to the ranking for the previous month?
+
+--------------------------
+WITH receiptdates AS ( SELECT _id."$oid" AS receipt_id, item.barcode, date_format( FROM_UNIXTIME(datescanned."$date" / 1000),'%Y-%m-01') AS month_start FROM receipts
+CROSS JOIN UNNEST(rewardsreceiptitemlist) AS t(item) WHERE item.barcode IS NOT NULL
+),brandrank AS ( SELECT barcode, month_start,COUNT(DISTINCT receipt_id) AS receipts_scanned
+FROM receiptdates GROUP BY barcode,month_start)
+SELECT barcode,SUM(CASE WHEN month_start = '2021-02-01' THEN receipts_scanned ELSE 0 END) AS currentmonth,SUM(CASE WHEN month_start = '2021-01-01' THEN receipts_scanned ELSE 0 END
+	) AS previous_month_scans FROM brandrank WHERE month_start IN ('2021-02-01', '2021-01-01')
+GROUP BY barcode ORDER BY currentmonth DESC
+LIMIT 5;
+--------------------------
+
+Explanation:
+
+This query flattens the nested rewardsreceiptitemlist, aggregates by month and barcode, totals distinct receipts, and compares brand rankings for February 2021 (current month) and January 2021 (previous month) and shows the top 5 brands by February scans.
+
+Output:
+
+#	barcode	   currentmonth	     previous_month_scans
+1	4011	        33	            141
+2	B076FJ92M4	27	              0
+3	B07BRRLSVC	27	              0
+4	1234	         5	              27
+5	028400642255	3	              10
+
+
+**Question3:**
+
+When considering average spend from receipts with 'rewardsReceiptStatus’ of ‘Accepted’ or ‘Rejected’, which is greater?
+
+
+-----------
+select rewardsreceiptstatus,
+	avg(CAST(totalspent AS DOUBLE)) AS avgspend
+from receipts
+where rewardsreceiptstatus in ('FINISHED', 'REJECTED')
+group by rewardsreceiptstatus order by avgspend DESC;
+-----------
+
+Note: Accepted not their. I'm assuming finished as accepted.
+
+Explanation:This brings the average total amount spent for 'FINISHED' or 'REJECTED' receipts by converting totalspent to DOUBLE, then determining which status contains a higher average spend by ordering the result in descending order.
+
+Output:
+
+#	rewardsreceiptstatus	avgspend
+1	FINISHED	      80.85430501930502
+2	REJECTED	      23.326056338028184
+
+
+**Question4:**
+When considering total number of items purchased from receipts with 'rewardsReceiptStatus’ of ‘Accepted’ or ‘Rejected’, which is greater?
+
+
+---------------------
+select rewardsreceiptstatus, SUM(purchaseditemcount) AS totalitems
+from receipts where rewardsreceiptstatus IN ('FINISHED', 'REJECTED')
+group by rewardsreceiptstatus order by total_items asc;
+----------------------
+
+Explanation: This query sums up purchased item count (purchaseditemcount) for receipts that have a status of 'FINISHED' or 'REJECTED', groups the results by rewardsreceiptstatus, and orders them to show which status has the highest total number of items.
+
+Output:
+
+#	rewardsreceiptstatus	total_items
+1	FINISHED	          8184
+2	REJECTED	          173
+
+
+**Question5:**
+Which brand has the most spend among users who were created within the past 6 months?
+
+-------------------
+with latest_user_created AS (select date_add('month',-6,from_unixtime(MAX(createddate."$date" / 1000))) AS sixmonths
+from users),
+recent_users AS (select _id."$oid" AS user_id from users,latest_user_created where from_unixtime(createddate."$date" / 1000) >= sixmonths),
+receipt_items AS (select r.userid AS user_id,item.barcode,cast(item.finalprice AS double) AS final_price from receipts r
+CROSS JOIN UNNEST(r.rewardsreceiptitemlist) AS t(item)	where item.barcode IS NOT NULL)
+select ri.barcode,sum(ri.final_price) AS total_spend from receipt_items ri JOIN recent_users u ON ri.user_id = u.user_id
+group by ri.barcode order by total_spend DESC LIMIT 10;
+-------------------
+
+Explanation: This query initially finds new users created within 6 months of the latest user creation timestamp, secondly fetches their scanned receipt items, computes final_price by brand (barcode), and lastly sorts the brands by total spend to show top 10 brands for new users.
+
+Output:
+
+#	barcode	         total_spend
+1	036000320893	32339.60000000001
+2	B076FJ92M4	18375.999999999898
+3	B07BRRLSVC	9591.999999999865
+4	034100573065	6383.0
+5	4011	         3216.0100000000007
+6	021000032778	1618.3800000000012
+7	021000037186	1438.560000000001
+8	013562300631	1350.0
+9	021000050765	899.1000000000006
+10	021000024834	899.1000000000006
+
+
+**Question 6:**
+
+Which brand has the most transactions among users who were created within the past 6 months?
+
+--------------
+with latest_user_created AS ( select from_unixtime(max(createddate."$date" / 1000)) AS newest_user from users),
+recent_users AS ( select _id."$oid" AS user_id from users,latest_user_created WHERE from_unixtime(createddate."$date" / 1000) >= date_add('month', -6, newest_user)
+),receipt_items AS ( select r.userid AS user_id,item.barcode from receipts r cross join unnest(r.rewardsreceiptitemlist) AS t(item) where item.barcode IS NOT NULL) select ri.barcode, COUNT(*) AS transaction_count from receipt_items ri join recent_users u on ri.user_id = u.user_id
+group by ri.barcode order by transaction_count desc limit 10;
+--------------
+
+Output:
+
+#	barcode	       transaction_count
+1	036000320893	  1540
+2	B076FJ92M4	    800
+3	B07BRRLSVC	   800
+4	4011	        357
+5	034100573065	223
+6	013000657600	180
+7	021000032778	162
+8	025400076363	160
+9	021000037186	144
+10	1234	        116
+
