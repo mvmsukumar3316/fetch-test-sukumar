@@ -1,6 +1,6 @@
 Welcome to the fetch-test-sukumar wiki!
   
-# **First**:
+**************************************First************************************************************
 
 Review Existing Unstructured Data and Diagram a New Structured Relational Data Model
 
@@ -80,7 +80,7 @@ Explanation:
 ->Foreign Keys: receipts.user_id → users.user_id and rewards_receipt_items.barcode → brands.barcode.
 
 
-**Second:**
+************************************************Second:*****************************************************************
 
  Write queries that directly answer predetermined questions from a business stakeholder
 
@@ -242,4 +242,101 @@ Output:
 8	025400076363	160
 9	021000037186	144
 10	1234	        116
+
+
+************************************************************THRID***********************************************************************
+
+Evaluate Data Quality Issues in the Data Provided
+
+Note: I'm using sql
+
+--> Check if having any missing or null values:
+
+----------------------
+select count(*) AS total_records, sum(case when userId is null then 1 else 0 end) AS missingids,
+ sum(case when purchaseDate is null then 1 else 0 end) AS missingpurchase_dates,
+sum(case when rewardsReceiptStatus is null then 1 else 0 end) AS missingstatus
+from receipts;
+----------------------
+
+
+----->Checking having any invalid values -- bad formats or unexpected text
+
+---------
+select distinct rewardsreceiptstatus from receipts
+---------
+
+Explain:  This will check if having any expected value such as 'rejectdd' instead of 'rejected'. Have to see only valid values such as finished, rejected, pending
+
+
+-------> Checking any outlier
+
+---------------
+select min(totalspent), max(totalspent) from receipts
+---------------
+
+Explain if total spent less than 0 then it will be negative value , if value greater tahn 100k then it will be too large. Will see if data is dirty or unexpected;y raised at any point
+
+
+-------> Check if having any duplicate records
+
+--------
+selecxt userid, purchaseDate, count(*) from receipts group by 1,2 having count(*) >1
+--------
+
+Explain:  this checking duplicate records of same user that purchased on same day
+
+---> Sif schema or data type issue
+
+---------------------
+select typeof(totalspent), typeof(purchase date) from receipts;
+---------------------
+
+Explain: Using this typeof we will check if columns are stored as string instead of numeric. We use cast function to change the dataype if required
+
+
+--> Consistency check
+
+-----------
+select r1.userid from receipts r1 left join users u on r1.userid=u._id."$oid" where u._id is null;
+-----------
+
+Explain: This will find the receipts whose users does not exist in users tables(Dimension 1 )
+
+Will do all this check and try to find data quality issues.
+
+
+****************************************************************************Fourth********************************************************
+
+Communicate with Stakeholders
+
+-------------------------------------------------------------
+Hi,
+
+       Currently completed intital reveiw of all three datasets(receipts, users, brands). Where I have exmained and identified how data was written. noticed few issues and looking to get few followu p questions onti
+
+#Few followup questions I have when I examined data
+Some of key fields like purchasedate, totalspent and userid columns in recveipt dataset has missing values. should these receipts be removed or require to flag?
+Few of records on receipt datasets are not linked to user id that doesn't exist in the users dataset/ Whether this record should be retained or removed?
+Additionaly I noticed some unexpected valyes in rewardsreceiptstatus outside of "finished" and rejected such as pending aborted. Can you confirm the full list of valid status should be kept?
+
+# checking process to find data quality issues
+As next stage I have performed data quality checks on all datasets where ran series of sql queries to find missing, null values cross critical columns. Checked distinct values to catch inconsistency and also verified if any duplicate or outlier extend on totalspend columns.
+Performed cross validation checks on user id between receipt and user datset to find any mismatches.
+
+#Mechanisn followed to resolve data qulity issues
+To solve data quality issues which identified, If any data missing on non-critical fields can be removed or can use deafult values. In production environment will flag it and review it later period(send to qurantine location), Then try to check if having correct datatype. In case right data type not specified we use Cast fucntion to change it
+We use deduplication logic to remove duplicate or repeated values. 
+
+#other information would you need to help you optimize the data assets
+Try to analyze which columns or atatributes are mandatory for analytics(Business critical fields), How often we are getting new data is it hourly or daily basis?
+Does this data require for ever or can specify retention policies? In case specify retention policy what period can be ideal? Does we accessing specific resources more oftern such as check on specific user or brands?
+
+#performance and scaling concerns do you anticipate in production
+In receipt dataset noticed rewardsreveiptitemlist was nest field. For large datset it will be complicated if performing any join operations, As best practise need to explode rows and need unnest. This can make run query faster
+If data growing rapidly in future can expereince performance issue, Can enable partitions on purchasedate or on high cardinality columns. Enabling indexes on columns that using filter conditions is best practise
+If frequently looking on any specific data(user or specific month) can create materalized views which will store compuation results(Unless view), Enabling cache will be one of the best practise can follow.
+If any resource contraint issues occurs will enable autosacling options using metrics such as cpu or memory, will spin up or add more capacity to processs query or job. Once job finished will scale down resources automatically.
+
+-------------------------------------------------------------
 
