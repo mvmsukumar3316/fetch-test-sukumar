@@ -281,7 +281,7 @@ Explain if total spent less than 0 then it will be negative value , if value gre
 -------> Check if having any duplicate records
 
 --------
-selecxt userid, purchaseDate, count(*) from receipts group by 1,2 having count(*) >1
+select userid, purchaseDate, count(*) from receipts group by 1,2 having count(*) >1
 --------
 
 Explain:  this checking duplicate records of same user that purchased on same day
@@ -313,7 +313,7 @@ Communicate with Stakeholders
 -------------------------------------------------------------
 Hi,
 
-       Currently completed intital reveiw of all three datasets(receipts, users, brands). Where I have exmained and identified how data was written. noticed few issues and looking to get few followu p questions onti
+       I have completed the initial review of all three datasets (receipts, users, and brands), during which I examined how the data was structured and populated. I identified a few potential issues and would like to follow up with some questions to clarify next steps.
 
 #Few followup questions I have when I examined data
 Some of key fields like purchasedate, totalspent and userid columns in recveipt dataset has missing values. should these receipts be removed or require to flag?
@@ -338,5 +338,9 @@ If data growing rapidly in future can expereince performance issue, Can enable p
 If frequently looking on any specific data(user or specific month) can create materalized views which will store compuation results(Unless view), Enabling cache will be one of the best practise can follow.
 If any resource contraint issues occurs will enable autosacling options using metrics such as cpu or memory, will spin up or add more capacity to processs query or job. Once job finished will scale down resources automatically.
 
+Please feel free to review the follow-up questions and take a deeper look into the findings. I would appreciate any recommendations on best practices and answers to the questions raised. Once I have your feedback, I’m ready to take further action. Looking forward to your response!
+
+Thanks,
+Sukumar
 -------------------------------------------------------------
 
